@@ -1,447 +1,137 @@
 #include <SPI.h>
 #include <MFRC522.h>
-#include <Arduino.h>
-#include <WiFi.h>
-#include <HTTPClient.h>
-#include <WiFiClientSecure.h>
-#include <WebServer.h>
-#include <ArduinoJson.h>
 
 #define RST_PIN 22
 #define SS_PIN 21
-#define BUZZER 15
 
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 MFRC522::MIFARE_Key key;
 MFRC522::StatusCode status;
 
-int blockNum = 2;
+// Block (hindari 3,7,11)
+int blockNama  = 2;
+int blockKelas = 4;
+int blockNisn  = 5;
+
+// Data harus 16 karakter
+byte nama[16]  = "BUDI_SANTOSO   ";
+byte kelas[16] = "XII_RPL_1      ";
+byte nisn[16]  = "1234567890     ";
+
 byte bufferLen = 18;
-byte readBlockData[18];
-
-String card_holder_name;
-String lastCardData = "";
-const String sheet_url = "Enter Google Sheet URL";
-
-#define WIFI_SSID "http"
-#define WIFI_PASSWORD "tuwagapatma"
-
-WebServer server(80);
-
-// HTML Page
-// GANTI bagian HTML ini di kode Anda:
-
-// GANTI bagian HTML ini di kode Anda:
-
-const char index_html[] PROGMEM = R"rawliteral(
-<!DOCTYPE HTML><html>
-<head>
-  <title>Absensi Siswa</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    
-    body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      min-height: 100vh;
-      background: linear-gradient(135deg, #A8E6CF 0%, #BEE5B0 25%, #D4F4DD 50%, #E8F8F5 100%);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      overflow-x: hidden;
-      position: relative;
-    }
-
-    /* Floating Matcha Particles */
-    body::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background-image: 
-        radial-gradient(circle at 20% 80%, rgba(168,230,207,0.3) 0%, transparent 50%),
-        radial-gradient(circle at 80% 20%, rgba(190,229,176,0.3) 0%, transparent 50%),
-        radial-gradient(circle at 40% 40%, rgba(212,244,221,0.2) 0%, transparent 50%);
-      animation: float 20s ease-in-out infinite;
-      pointer-events: none;
-    }
-
-    @keyframes float {
-      0%, 100% { transform: translateY(0px) rotate(0deg); }
-      33% { transform: translateY(-20px) rotate(120deg); }
-      66% { transform: translateY(10px) rotate(240deg); }
-    }
-
-    .container {
-      background: rgba(255,255,255,0.15);
-      backdrop-filter: blur(20px);
-      border-radius: 30px;
-      padding: 40px;
-      max-width: 500px;
-      width: 90%;
-      box-shadow: 
-        0 25px 45px rgba(0,0,0,0.1),
-        0 0 0 1px rgba(255,255,255,0.2),
-        inset 0 1px 0 rgba(255,255,255,0.3);
-      border: 1px solid rgba(255,255,255,0.2);
-      animation: slideIn 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-      position: relative;
-      overflow: hidden;
-    }
-
-    @keyframes slideIn {
-      from { opacity: 0; transform: translateY(50px) scale(0.9); }
-      to { opacity: 1; transform: translateY(0) scale(1); }
-    }
-
-    .container::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 4px;
-      background: linear-gradient(90deg, #A8E6CF, #BEE5B0, #D4F4DD, #A8E6CF);
-      background-size: 200% 100%;
-      animation: shimmer 3s linear infinite;
-    }
-
-    @keyframes shimmer {
-      0% { background-position: 200% 0; }
-      100% { background-position: -200% 0; }
-    }
-
-    h1 {
-      font-size: 28px;
-      background: linear-gradient(135deg, #2D5016, #4A7C59);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      margin-bottom: 10px;
-      font-weight: 700;
-      animation: glow 2s ease-in-out infinite alternate;
-    }
-
-    @keyframes glow {
-      from { filter: drop-shadow(0 0 5px rgba(168,230,207,0.5)); }
-      to { filter: drop-shadow(0 0 20px rgba(168,230,207,0.8)); }
-    }
-
-    .ip-address {
-      background: linear-gradient(135deg, rgba(168,230,207,0.3), rgba(190,229,176,0.3));
-      padding: 15px;
-      border-radius: 20px;
-      margin: 20px 0;
-      font-size: 16px;
-      font-weight: 600;
-      color: #2D5016;
-      border: 1px solid rgba(168,230,207,0.5);
-      animation: pulse 2s infinite;
-    }
-
-    @keyframes pulse {
-      0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.02); }
-    }
-
-    .status {
-      font-size: 24px;
-      font-weight: 700;
-      margin: 25px 0;
-      padding: 15px 25px;
-      border-radius: 25px;
-      transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-      transform-origin: center;
-    }
-
-    .status.waiting {
-      background: linear-gradient(135deg, rgba(244,67,54,0.2), rgba(255,152,0,0.2));
-      color: #D32F2F;
-      border: 2px solid rgba(244,67,54,0.3);
-      animation: shake 0.5s ease-in-out infinite;
-    }
-
-    .status.success {
-      background: linear-gradient(135deg, rgba(76,175,80,0.4), rgba(129,199,132,0.4));
-      color: #2E7D32;
-      border: 2px solid rgba(76,175,80,0.5);
-      animation: bounce 0.6s ease-out;
-      transform: scale(1.05);
-    }
-
-    @keyframes shake {
-      0%, 100% { transform: translateX(0); }
-      25% { transform: translateX(-5px); }
-      75% { transform: translateX(5px); }
-    }
-
-    @keyframes bounce {
-      0% { transform: scale(0.3); opacity: 0; }
-      50% { transform: scale(1.05); }
-      70% { transform: scale(0.9); }
-      100% { transform: scale(1); opacity: 1; }
-    }
-
-    .card-data {
-      background: rgba(255,255,255,0.25);
-      padding: 25px;
-      border-radius: 20px;
-      font-size: 20px;
-      font-family: 'Courier New', monospace;
-      word-break: break-all;
-      min-height: 60px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border: 2px dashed rgba(168,230,207,0.5);
-      transition: all 0.3s ease;
-      margin: 20px 0;
-    }
-
-    .card-data.has-data {
-      background: linear-gradient(135deg, rgba(168,230,207,0.4), rgba(190,229,176,0.4));
-      border: 2px solid rgba(74,124,89,0.6);
-      animation: slideUp 0.5s ease-out;
-      font-weight: 600;
-    }
-
-    @keyframes slideUp {
-      from { transform: translateY(20px); opacity: 0; }
-      to { transform: translateY(0); opacity: 1; }
-    }
-
-    .time {
-      font-size: 14px;
-      color: #4A7C59;
-      font-weight: 500;
-      margin-top: 10px;
-    }
-
-    .btn {
-      background: linear-gradient(135deg, #A8E6CF, #BEE5B0);
-      color: #2D5016;
-      border: none;
-      padding: 15px 35px;
-      font-size: 16px;
-      font-weight: 600;
-      border-radius: 30px;
-      cursor: pointer;
-      margin: 10px 5px;
-      transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-      box-shadow: 0 8px 25px rgba(168,230,207,0.4);
-      position: relative;
-      overflow: hidden;
-    }
-
-    .btn::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: -100%;
-      width: 100%;
-      height: 100%;
-      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
-      transition: left 0.5s;
-    }
-
-    .btn:hover::before { left: 100%; }
-    .btn:hover { transform: translateY(-3px) scale(1.05); box-shadow: 0 15px 35px rgba(168,230,207,0.6); }
-    .btn:active { transform: translateY(-1px); }
-
-    @media (max-width: 480px) {
-      .container { padding: 30px 20px; margin: 20px; }
-      h1 { font-size: 24px; }
-      .status { font-size: 20px; }
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>Scaner Absensi SMKN 11 MALANG</h1>
-    
-    <div class="ip-address">
-       IP: <span id="ipAddress">Loading...</span>
-    </div>
-    
-    <div id="status" class="status waiting">Scan Kartumu</div>
-    
-    <div class="last-scan">
-      <h3 style="color: #4A7C59; margin-bottom: 15px;">Nama Siswa:</h3>
-      <div id="cardData" class="card-data">TAP KARTU UNTUK MEMULAI</div>
-      <div id="scanTime" class="time"></div>
-    </div>
-    
-    <button class="btn" onclick="clearData()">Mulai ulang data</button>
-    <button class="btn" onclick="location.reload()">Refresh</button>
-  </div>
-
-  <script>
-    function updateStatus(data) {
-      const status = document.getElementById('status');
-      const cardData = document.getElementById('cardData');
-      const scanTime = document.getElementById('scanTime');
-      
-      if (data.cardData && data.cardData !== '') {
-        status.textContent = 'SUDAH MASUK ABSEN SELAMAT BELAJAR!';
-        status.className = 'status success';
-        cardData.textContent = data.cardData;
-        cardData.classList.add('has-data');
-        scanTime.textContent = 'Scanned: ' + new Date().toLocaleString('id-ID');
-      } else {
-        status.textContent = 'Scan Kartumu';
-        status.className = 'status waiting';
-        cardData.textContent = 'TAP KARTU UNTUK MEMULAI';
-        cardData.classList.remove('has-data');
-        scanTime.textContent = '';
-      }
-    }
-
-    function getData() {
-      fetch('/data')
-        .then(response => response.json())
-        .then(data => updateStatus(data))
-        .catch(error => console.log('Error:', error));
-    }
-
-    function clearData() {
-      fetch('/clear', {method: 'POST'})
-        .then(() => getData());
-    }
-
-    // Update every 1.5 seconds
-    setInterval(getData, 1500);
-    getData();
-
-    // Get IP address
-    fetch('/ip')
-      .then(response => response.text())
-      .then(ip => {
-        document.getElementById('ipAddress').textContent = ip;
-      });
-  </script>
-</body>
-</html>)rawliteral";
 
 void setup() {
   Serial.begin(115200);
-  Serial.println();
-  Serial.print("Connecting to AP");
-  
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  while (WiFi.status() != WL_CONNECTED) {
-    Serial.print(".");
-    delay(200);
-  }
-  Serial.println("");
-  Serial.println("WiFi connected.");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
-  
-  pinMode(BUZZER, OUTPUT);
   SPI.begin();
-  
-  // Setup WebServer routes
-  server.on("/", HTTP_GET, []() {
-    server.send(200, "text/html", index_html);
-  });
-  
-  server.on("/data", HTTP_GET, []() {
-    DynamicJsonDocument doc(1024);
-    doc["cardData"] = lastCardData;
-    String response;
-    serializeJson(doc, response);
-    server.send(200, "application/json", response);
-  });
-  
-  server.on("/ip", HTTP_GET, []() {
-    server.send(200, "text/plain", WiFi.localIP().toString());
-  });
-  
-  server.on("/clear", HTTP_POST, []() {
-    lastCardData = "";
-    server.send(200, "text/plain", "Data cleared");
-  });
-  
-  server.begin();
-  Serial.println("HTTP server started");
-  Serial.print("Open http://");
-  Serial.print(WiFi.localIP());
-  Serial.println(" in your browser");
+  mfrc522.PCD_Init();
+
+  Serial.println("Tempel kartu RFID...");
 }
 
 void loop() {
-  server.handleClient();  // Handle web requests
-  
-  mfrc522.PCD_Init();
-  if (!mfrc522.PICC_IsNewCardPresent()) { return; }
-  if (!mfrc522.PICC_ReadCardSerial()) { return; }
-  
-  Serial.println();
-  Serial.println(F("Reading last data from RFID..."));
-  ReadDataFromBlock(blockNum, readBlockData);
 
-  // Print the data read from block
-  Serial.print(F("Last data in RFID:"));
-  Serial.print(blockNum);
-  Serial.print(F(" --> "));
-  for (int j = 0; j < 16; j++) {
-    Serial.write(readBlockData[j]);
-  }
-  Serial.println();
-  
-  // Save to global variable for web display
-  lastCardData = String((char*)readBlockData);
-  lastCardData.trim();
-  
-  // Buzzer feedback
-  digitalWrite(BUZZER, HIGH); delay(200);
-  digitalWrite(BUZZER, LOW); delay(200);
-  digitalWrite(BUZZER, HIGH); delay(200);
-  digitalWrite(BUZZER, LOW);
-
-  // Google Sheets integration (optional)
-  if (WiFi.status() == WL_CONNECTED && sheet_url != "Enter Google Sheet URL") {
-    sendToGoogleSheets();
-  }
-}
-
-void sendToGoogleSheets() {
-  WiFiClientSecure client;
-  client.setInsecure();
-  card_holder_name = sheet_url + String((char*)readBlockData);
-  card_holder_name.trim();
-  
-  HTTPClient https;
-  Serial.print(F("[HTTPS] begin...\n"));
-  
-  if (https.begin(client, (String)card_holder_name)) {
-    Serial.print(F("[HTTPS] GET...\n"));
-    int httpCode = https.GET();
-    if (httpCode > 0) {
-      Serial.printf("[HTTPS] GET... code: %d\n", httpCode);
-    } else {
-      Serial.printf("[HTTPS] GET... failed, error: %s\n", https.errorToString(httpCode).c_str());
-    }
-    https.end();
-  }
-}
-
-void ReadDataFromBlock(int blockNum, byte readBlockData[]) {
+  // Key default
   for (byte i = 0; i < 6; i++) {
     key.keyByte[i] = 0xFF;
   }
-  status = mfrc522.PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, blockNum, &key, &(mfrc522.uid));
+
+  // Deteksi kartu
+  if (!mfrc522.PICC_IsNewCardPresent()) return;
+  if (!mfrc522.PICC_ReadCardSerial()) return;
+
+  Serial.println("\n=== KARTU TERDETEKSI ===");
+
+  // Tulis data
+  Serial.println("Menulis Nama...");
+  WriteData(blockNama, nama);
+
+  Serial.println("Menulis Kelas...");
+  WriteData(blockKelas, kelas);
+
+  Serial.println("Menulis NISN...");
+  WriteData(blockNisn, nisn);
+
+  delay(1000);
+
+  // Buffer baca
+  byte readNama[18];
+  byte readKelas[18];
+  byte readNisn[18];
+
+  Serial.println("\nMembaca Data...");
+
+  ReadData(blockNama, readNama);
+  ReadData(blockKelas, readKelas);
+  ReadData(blockNisn, readNisn);
+
+  // Tampilkan hasil
+  Serial.print("Nama  : ");
+  printData(readNama);
+
+  Serial.print("Kelas : ");
+  printData(readKelas);
+
+  Serial.print("NISN  : ");
+  printData(readNisn);
+
+  Serial.println("\n========================");
+
+  delay(3000);
+}
+
+// ================= FUNCTION =================
+
+void WriteData(int block, byte data[]) {
+
+  status = mfrc522.PCD_Authenticate(
+    MFRC522::PICC_CMD_MF_AUTH_KEY_A,
+    block,
+    &key,
+    &(mfrc522.uid)
+  );
+
   if (status != MFRC522::STATUS_OK) {
-    Serial.print("Authentication failed for Read: ");
+    Serial.print("Auth gagal: ");
     Serial.println(mfrc522.GetStatusCodeName(status));
     return;
   }
-  status = mfrc522.MIFARE_Read(blockNum, readBlockData, &bufferLen);
+
+  status = mfrc522.MIFARE_Write(block, data, 16);
+
   if (status != MFRC522::STATUS_OK) {
-    Serial.print("Reading failed: ");
+    Serial.print("Write gagal: ");
+    Serial.println(mfrc522.GetStatusCodeName(status));
+  } else {
+    Serial.println("Berhasil");
+  }
+}
+
+void ReadData(int block, byte buffer[]) {
+
+  status = mfrc522.PCD_Authenticate(
+    MFRC522::PICC_CMD_MF_AUTH_KEY_A,
+    block,
+    &key,
+    &(mfrc522.uid)
+  );
+
+  if (status != MFRC522::STATUS_OK) {
+    Serial.print("Auth gagal: ");
     Serial.println(mfrc522.GetStatusCodeName(status));
     return;
   }
+
+  status = mfrc522.MIFARE_Read(block, buffer, &bufferLen);
+
+  if (status != MFRC522::STATUS_OK) {
+    Serial.print("Read gagal: ");
+    Serial.println(mfrc522.GetStatusCodeName(status));
+  }
+}
+
+void printData(byte data[]) {
+  for (int i = 0; i < 16; i++) {
+    Serial.write(data[i]);
+  }
+  Serial.println();
 }
