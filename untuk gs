@@ -1,0 +1,17 @@
+function doGet(e) { 
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName("Sheet1"); // Pastikan nama sheet sesuai
+  
+  // Mengambil parameter dari URL
+  var nama = e.parameter.nama;
+  var kelas = e.parameter.kelas;
+  var nisn = e.parameter.nisn;
+  var waktu = new Date();
+
+
+
+  // Menambahkan baris baru ke sheet
+  sheet.appendRow([nama, kelas, nisn, waktu]);
+  
+  return ContentService.createTextOutput("Berhasil menyimpan ke Google Sheets").setMimeType(ContentService.MimeType.TEXT);
+}
